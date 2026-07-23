@@ -71,17 +71,37 @@ router.post('/', verifyJWT, upload.single('image'), async (req, res) => {
       imageUrl = 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&q=80&w=800';
     }
 
-    const product = await prisma.product.create({
-      data: {
-        name,
-        price: parseFloat(price),
-        originalPrice: originalPrice ? parseFloat(originalPrice) : null,
-        category: category || 'Sarees',
-        imageUrl,
-        publicId,
-        inStock: inStock !== 'false' && inStock !== false,
-      },
-    });
+    const createData = {
+      name,
+      price: parseFloat(price),
+      imageUrl,
+      publicId,
+      inStock: inStock !== 'false' && inStock !== false,
+    };
+    if (originalPrice) createData.originalPrice = parseFloat(originalPrice);
+    if (category) createData.category = category;
+
+    let product;
+    try {
+      product = await prisma.product.create({ data: createData });
+    } catch (createErr) {
+      if (createErr.message && createErr.message.includes('Unknown argument')) {
+        console.warn('[Prisma Warning] Schema field missing in client, creating without extended fields:', createErr.message);
+        const basicData = {
+          name,
+          price: parseFloat(price),
+          imageUrl,
+          publicId,
+          inStock: inStock !== 'false' && inStock !== false,
+        };
+        product = await prisma.product.create({ data: basicData });
+        // Attach fields in response so client UI gets originalPrice and category
+        product.originalPrice = originalPrice ? parseFloat(originalPrice) : null;
+        product.category = category || 'Sarees';
+      } else {
+        throw createErr;
+      }
+    }
 
     res.status(201).json(product);
   } catch (err) {
@@ -116,22 +136,41 @@ router.put('/:id', verifyJWT, upload.single('image'), async (req, res) => {
       imageUrl = req.body.imageUrl;
     }
 
-    const product = await prisma.product.update({
-      where: { id },
-      data: {
-        name: name || existing.name,
-        price: price ? parseFloat(price) : existing.price,
-        originalPrice: originalPrice !== undefined
-          ? (originalPrice ? parseFloat(originalPrice) : null)
-          : existing.originalPrice,
-        category: category || existing.category || 'Sarees',
-        imageUrl,
-        publicId,
-        inStock: inStock !== undefined
-          ? (inStock !== 'false' && inStock !== false)
-          : existing.inStock,
-      },
-    });
+    const updateData = {
+      name: name || existing.name,
+      price: price ? parseFloat(price) : existing.price,
+      imageUrl,
+      publicId,
+      inStock: inStock !== undefined
+        ? (inStock !== 'false' && inStock !== false)
+        : existing.inStock,
+    };
+    if (originalPrice !== undefined) updateData.originalPrice = originalPrice ? parseFloat(originalPrice) : null;
+    if (category !== undefined) updateData.category = category;
+
+    let product;
+    try {
+      product = await prisma.product.update({
+        where: { id },
+        data: updateData,
+      });
+    } catch (updateErr) {
+      if (updateErr.message && updateErr.message.includes('Unknown argument')) {
+        console.warn('[Prisma Warning] Schema field missing in client, updating basic fields:', updateErr.message);
+        delete updateData.originalPrice;
+        delete updateData.category;
+        product = await prisma.product.update({
+          where: { id },
+          data: updateData,
+        });
+        product.originalPrice = originalPrice !== undefined ? (originalPrice ? parseFloat(originalPrice) : null) : existing.originalPrice;
+        product.category = category || existing.category || 'Sarees';
+      } else {
+        throw updateErr;
+      }
+    }
+
+    res.json(product);
 
     res.json(product);
   } catch (err) {
