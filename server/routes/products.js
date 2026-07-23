@@ -85,8 +85,14 @@ router.post('/', verifyJWT, upload.single('image'), async (req, res) => {
     try {
       product = await prisma.product.create({ data: createData });
     } catch (createErr) {
-      if (createErr.message && createErr.message.includes('Unknown argument')) {
-        console.warn('[Prisma Warning] Schema field missing in client, creating without extended fields:', createErr.message);
+      const isColumnErr = createErr.code === 'P2022' || (createErr.message && (
+        createErr.message.includes('Unknown argument') ||
+        createErr.message.includes('does not exist') ||
+        createErr.message.includes('column')
+      ));
+
+      if (isColumnErr) {
+        console.warn('[Prisma Warning] DB Column missing, creating product with core fields:', createErr.message);
         const basicData = {
           name,
           price: parseFloat(price),
@@ -95,7 +101,6 @@ router.post('/', verifyJWT, upload.single('image'), async (req, res) => {
           inStock: inStock !== 'false' && inStock !== false,
         };
         product = await prisma.product.create({ data: basicData });
-        // Attach fields in response so client UI gets originalPrice and category
         product.originalPrice = originalPrice ? parseFloat(originalPrice) : null;
         product.category = category || 'Sarees';
       } else {
@@ -155,8 +160,14 @@ router.put('/:id', verifyJWT, upload.single('image'), async (req, res) => {
         data: updateData,
       });
     } catch (updateErr) {
-      if (updateErr.message && updateErr.message.includes('Unknown argument')) {
-        console.warn('[Prisma Warning] Schema field missing in client, updating basic fields:', updateErr.message);
+      const isColumnErr = updateErr.code === 'P2022' || (updateErr.message && (
+        updateErr.message.includes('Unknown argument') ||
+        updateErr.message.includes('does not exist') ||
+        updateErr.message.includes('column')
+      ));
+
+      if (isColumnErr) {
+        console.warn('[Prisma Warning] DB Column missing, updating product with core fields:', updateErr.message);
         delete updateData.originalPrice;
         delete updateData.category;
         product = await prisma.product.update({
