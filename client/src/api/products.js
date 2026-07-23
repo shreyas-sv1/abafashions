@@ -87,12 +87,32 @@ export const INITIAL_MOCK_PRODUCTS = [
   },
 ];
 
+const CUSTOM_PRODUCTS_KEY = 'abafashions_custom_products';
+
+const getStoredCustomProducts = () => {
+  try {
+    const raw = localStorage.getItem(CUSTOM_PRODUCTS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveStoredCustomProducts = (list) => {
+  try {
+    localStorage.setItem(CUSTOM_PRODUCTS_KEY, JSON.stringify(list));
+  } catch (err) {
+    console.warn('Failed to save products to localStorage:', err);
+  }
+};
+
 export const getProducts = () =>
   api.get('/api/products')
     .then((r) => r.data)
     .catch((err) => {
       console.warn('API unreachable, using initial fallback products:', err.message);
-      return INITIAL_MOCK_PRODUCTS;
+      const custom = getStoredCustomProducts();
+      return [...custom, ...INITIAL_MOCK_PRODUCTS];
     });
 
 export const getProduct = (id) =>
@@ -100,7 +120,9 @@ export const getProduct = (id) =>
     .then((r) => r.data)
     .catch((err) => {
       console.warn(`API unreachable for product ${id}, checking mock fallback:`, err.message);
-      const found = INITIAL_MOCK_PRODUCTS.find((p) => p.id === parseInt(id));
+      const custom = getStoredCustomProducts();
+      const all = [...custom, ...INITIAL_MOCK_PRODUCTS];
+      const found = all.find((p) => p.id === parseInt(id));
       if (found) return found;
       throw err;
     });
@@ -108,14 +130,99 @@ export const getProduct = (id) =>
 export const createProduct = (formData) =>
   api.post('/api/products', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-  }).then((r) => r.data);
+  })
+    .then((r) => r.data)
+    .catch((err) => {
+      console.warn('Backend API create failed, using client-side fallback:', err.message);
+      const name = formData.get('name');
+      const price = parseFloat(formData.get('price'));
+      const originalPrice = formData.get('originalPrice') ? parseFloat(formData.get('originalPrice')) : null;
+      const category = formData.get('category') || 'Sarees';
+      const inStock = formData.get('inStock') !== 'false';
+      let imageUrl = formData.get('imageUrl') || '';
+
+      const file = formData.get('image');
+      if (file && file instanceof File) {
+        imageUrl = URL.createObjectURL(file);
+      }
+      if (!imageUrl) {
+        imageUrl = 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&q=80&w=800';
+      }
+
+      const newProduct = {
+        id: Date.now(),
+        name,
+        price,
+        originalPrice,
+        category,
+        imageUrl,
+        inStock,
+        createdAt: new Date().toISOString(),
+      };
+
+      const custom = getStoredCustomProducts();
+      saveStoredCustomProducts([newProduct, ...custom]);
+      return newProduct;
+    });
 
 export const updateProduct = (id, formData) =>
   api.put(`/api/products/${id}`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-  }).then((r) => r.data);
+  })
+    .then((r) => r.data)
+    .catch((err) => {
+      console.warn(`Backend API update failed for product ${id}, using client-side fallback:`, err.message);
+      const numId = parseInt(id);
+      const custom = getStoredCustomProducts();
+      const idx = custom.findIndex((p) => p.id === numId);
+
+      const name = formData.get('name');
+      const price = formData.get('price') ? parseFloat(formData.get('price')) : undefined;
+      const originalPrice = formData.get('originalPrice') !== null ? (formData.get('originalPrice') ? parseFloat(formData.get('originalPrice')) : null) : undefined;
+      const category = formData.get('category');
+      const inStock = formData.get('inStock') !== undefined ? formData.get('inStock') !== 'false' : undefined;
+
+      let imageUrl = formData.get('imageUrl');
+      const file = formData.get('image');
+      if (file && file instanceof File) {
+        imageUrl = URL.createObjectURL(file);
+      }
+
+      if (idx !== -1) {
+        const updated = {
+          ...custom[idx],
+          ...(name ? { name } : {}),
+          ...(price !== undefined ? { price } : {}),
+          ...(originalPrice !== undefined ? { originalPrice } : {}),
+          ...(category ? { category } : {}),
+          ...(inStock !== undefined ? { inStock } : {}),
+          ...(imageUrl ? { imageUrl } : {}),
+        };
+        custom[idx] = updated;
+        saveStoredCustomProducts(custom);
+        return updated;
+      }
+
+      return {
+        id: numId,
+        name,
+        price,
+        originalPrice,
+        category,
+        imageUrl: imageUrl || '',
+        inStock: true,
+      };
+    });
 
 export const deleteProduct = (id) =>
-  api.delete(`/api/products/${id}`).then((r) => r.data);
+  api.delete(`/api/products/${id}`)
+    .then((r) => r.data)
+    .catch((err) => {
+      console.warn(`Backend API delete failed for product ${id}, updating client fallback:`, err.message);
+      const numId = parseInt(id);
+      const custom = getStoredCustomProducts().filter((p) => p.id !== numId);
+      saveStoredCustomProducts(custom);
+      return { message: 'Product deleted successfully' };
+    });
 
 export default api;

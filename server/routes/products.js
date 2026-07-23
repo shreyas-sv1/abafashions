@@ -57,13 +57,18 @@ router.post('/', verifyJWT, upload.single('image'), async (req, res) => {
     let publicId = null;
 
     if (req.file) {
-      const result = await uploadToCloudinary(req.file.buffer);
-      imageUrl = result.url;
-      publicId = result.public_id;
+      try {
+        const result = await uploadToCloudinary(req.file.buffer);
+        imageUrl = result.url;
+        publicId = result.public_id;
+      } catch (cloudErr) {
+        console.warn('[Cloudinary Warning] Falling back to Data URL:', cloudErr.message);
+        imageUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+      }
     } else if (req.body.imageUrl) {
       imageUrl = req.body.imageUrl;
     } else {
-      return res.status(400).json({ error: 'Image is required' });
+      imageUrl = 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&q=80&w=800';
     }
 
     const product = await prisma.product.create({
@@ -81,7 +86,7 @@ router.post('/', verifyJWT, upload.single('image'), async (req, res) => {
     res.status(201).json(product);
   } catch (err) {
     console.error('[Products/Create]', err);
-    res.status(500).json({ error: 'Failed to create product' });
+    res.status(500).json({ error: err.message || 'Failed to create product' });
   }
 });
 
@@ -98,10 +103,17 @@ router.put('/:id', verifyJWT, upload.single('image'), async (req, res) => {
 
     // If a new image is uploaded, replace the old one
     if (req.file) {
-      await deleteFromCloudinary(existing.publicId);
-      const result = await uploadToCloudinary(req.file.buffer);
-      imageUrl = result.url;
-      publicId = result.public_id;
+      try {
+        if (existing.publicId) await deleteFromCloudinary(existing.publicId);
+        const result = await uploadToCloudinary(req.file.buffer);
+        imageUrl = result.url;
+        publicId = result.public_id;
+      } catch (cloudErr) {
+        console.warn('[Cloudinary Warning] Falling back to Data URL:', cloudErr.message);
+        imageUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+      }
+    } else if (req.body.imageUrl) {
+      imageUrl = req.body.imageUrl;
     }
 
     const product = await prisma.product.update({

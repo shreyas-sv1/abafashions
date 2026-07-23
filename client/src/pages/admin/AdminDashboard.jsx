@@ -41,6 +41,7 @@ function ProductForm({ initial, onSave, onCancel, loading }) {
   const [price,         setPrice]         = useState(initial?.price         || '');
   const [originalPrice, setOriginalPrice] = useState(initial?.originalPrice || '');
   const [inStock,       setInStock]       = useState(initial?.inStock !== false);
+  const [imageUrl,      setImageUrl]      = useState(initial?.imageUrl       || '');
   const [file,          setFile]          = useState(null);
   const [preview,       setPreview]       = useState(initial?.imageUrl       || '');
   const fileRef = useRef();
@@ -52,6 +53,18 @@ function ProductForm({ initial, onSave, onCancel, loading }) {
     setPreview(URL.createObjectURL(f));
   };
 
+  const handleUrlChange = (e) => {
+    const val = e.target.value;
+    setImageUrl(val);
+    if (val.trim()) {
+      setPreview(val.trim());
+    } else if (file) {
+      setPreview(URL.createObjectURL(file));
+    } else {
+      setPreview('');
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const fd = new FormData();
@@ -59,6 +72,7 @@ function ProductForm({ initial, onSave, onCancel, loading }) {
     fd.append('category',      category);
     fd.append('price',         price);
     if (originalPrice) fd.append('originalPrice', originalPrice);
+    if (imageUrl) fd.append('imageUrl', imageUrl.trim());
     fd.append('inStock', inStock ? 'true' : 'false');
     if (file) fd.append('image', file);
     onSave(fd);
@@ -76,7 +90,7 @@ function ProductForm({ initial, onSave, onCancel, loading }) {
   return (
     <form onSubmit={handleSubmit} className="product-form" aria-label={isEdit ? 'Edit product form' : 'Upload new product form'}>
       <div className="product-form__row">
-        {/* Image upload */}
+        {/* Image upload & URL */}
         <div className="product-form__image-col">
           <ImagePreview src={preview} alt={name || 'Product image'} />
           <input
@@ -94,10 +108,21 @@ function ProductForm({ initial, onSave, onCancel, loading }) {
             onClick={() => fileRef.current.click()}
             id={isEdit ? 'edit-pick-image-btn' : 'new-pick-image-btn'}
           >
-            {preview ? 'Change Image' : 'Choose Image'}
+            {file ? 'File Selected' : preview ? 'Change File' : 'Choose File'}
           </button>
+          <div style={{ width: '100%', textDecoration: 'none', margin: '4px 0' }}>
+            <input
+              type="url"
+              className="form-input"
+              style={{ fontSize: '0.75rem', padding: '6px 10px' }}
+              value={imageUrl}
+              onChange={handleUrlChange}
+              placeholder="Or paste Image URL..."
+              id={isEdit ? 'edit-image-url' : 'new-image-url'}
+            />
+          </div>
           {!file && !preview && (
-            <small className="product-form__img-note">Required for new products</small>
+            <small className="product-form__img-note">Upload file or paste image URL</small>
           )}
         </div>
 
